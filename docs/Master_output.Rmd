@@ -1,0 +1,42 @@
+---
+title: "Master_outputs"
+author: "Srujan"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk[['set']](echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+## Section 1: Data Loading 
+```{r Data_loading}
+# Select your Data Loading script
+source(file.choose())
+```
+
+## Section 2: Data Understanding 
+```{r Data_Understanding}
+source(file.choose())
+```
+
+## Section 3: Data Cleaning 
+```{r Data_Cleaning}
+source(file.choose())
+```
+
+## Section 4: Data Transformation 
+```{r data_transformation}
+source(file.choose())
+```
+
+## Section 5: Feature Engineering 
+```{r feature_engineering}
+source(file.choose())
+```
+
+## Section 6: EDA 
+```{r eda}
+source(file.choose())
+```
+
