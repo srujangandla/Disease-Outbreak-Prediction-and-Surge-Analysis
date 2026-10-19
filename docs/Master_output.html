@@ -11,7 +11,7 @@
 
 <meta name="author" content="Srujan" />
 
-<meta name="date" content="2026-10-08" />
+<meta name="date" content="2026-10-13" />
 
 <title>Master_outputs</title>
 
@@ -352,7 +352,7 @@ display: none;
 
 <h1 class="title toc-ignore">Master_outputs</h1>
 <h4 class="author">Srujan</h4>
-<h4 class="date">2026-10-08</h4>
+<h4 class="date">2026-10-13</h4>
 
 </div>
 
@@ -561,7 +561,7 @@ source(file.choose())</code></pre>
 <div id="section-3-data-cleaning" class="section level2">
 <h2>Section 3: Data Cleaning</h2>
 <pre class="r"><code>source(file.choose())</code></pre>
-<pre><code>## Loading file from verified path: C:/Users/GANDL/OneDrive/Documents/Predicting_Disease_Outbreaks/data/Epiclim.csv 
+<pre><code>## Loading file from verified path: C:/Users/GANDL/OneDrive/Documents/Project_ids/data/Epiclim.csv 
 ## Raw rows: 8985 
 ## 
 ## 3/1 
@@ -607,7 +607,7 @@ source(file.choose())</code></pre>
 <div id="section-4-data-transformation" class="section level2">
 <h2>Section 4: Data Transformation</h2>
 <pre class="r"><code>source(file.choose())</code></pre>
-<pre><code>## Loading file from verified path: C:/Users/GANDL/OneDrive/Documents/Predicting_Disease_Outbreaks/data/processed/cleaned_epiclim.csv 
+<pre><code>## Loading file from verified path: C:/Users/GANDL/OneDrive/Documents/Project_ids/data/processed/cleaned_epiclim.csv 
 ## States not assigned to a zone:
 ## character(0)
 ## 
@@ -667,22 +667,172 @@ source(file.choose())</code></pre>
 <div id="section-5-feature-engineering" class="section level2">
 <h2>Section 5: Feature Engineering</h2>
 <pre class="r"><code>source(file.choose())</code></pre>
-<pre><code>## Rows: 8970  Cols: 35 
+<pre><code>## Rows per split:
 ## 
-## Remaining NA counts (should be 0 except deaths-related):
-##    Deaths       cfr any_death 
-##      6420      6420      6420 
+## stress   test  train 
+##    702   1239   7029 
 ## 
-## Class balance (high_outbreak):
+## Surge thresholds (train only):
+##                       Disease n_train outbreak_threshold
+## 1    Acute Diarrhoeal Disease    4172              51.00
+## 2 Acute Encephalitis Syndrome      90              43.00
+## 3                 Chikungunya     517              48.00
+## 4                     Cholera     572              78.25
+## 5                      Dengue    1168              56.00
+## 6      Dengue And Chikungunya      48              50.50
+## 7                     Malaria     462              96.75
 ## 
-##       Low      High 
-## 0.7511706 0.2488294 
+## Rows: 8970  Cols: 35 (expected 35)
 ## 
-## Rows with history: 7265</code></pre>
+## NA counts (should be none):
+## named numeric(0)
+## 
+## High/Low share by split:
+##         
+##            Low  High
+##   stress 0.813 0.187
+##   test   0.780 0.220
+##   train  0.751 0.249
+## 
+## High outbreaks per split:
+##         
+##           Low High
+##   stress  571  131
+##   test    967  272
+##   train  5279 1750
+## 
+## Rows with history: 7265 
+## # A tibble: 6 × 2
+##   zone           n
+##   &lt;chr&gt;      &lt;int&gt;
+## 1 Central     1271
+## 2 East        1863
+## 3 North        658
+## 4 North-East   588
+## 5 South       2679
+## 6 West        1911</code></pre>
 </div>
 <div id="section-6-eda" class="section level2">
 <h2>Section 6: EDA</h2>
 <pre class="r"><code>source(file.choose())</code></pre>
+<pre class="r"><code>source(file.choose())</code></pre>
+<pre><code>## Rows - train: 7029 | test: 1239 | stress: 702 
+## 
+## Linear regression: R2 = 0.192 | adjusted R2 = 0.189 
+## 
+## mtry validation RMSE:
+##   mtry   rmse
+## 1    3 0.9266
+## 2    6 0.9238
+## 3    9 0.9238
+## 4   12 0.9271
+## Chosen mtry: 9 
+## Random forest out-of-bag R2: 0.276 
+## 
+## Model comparison (log scale; MAE_cases is on the original scale):
+##      set             model    n  RMSE   MAE       R2 MAE_cases
+## 1 stress          Baseline  702 1.116 0.881 -0.01991      42.4
+## 2 stress Linear Regression  702 1.040 0.813  0.11499      40.5
+## 3 stress     Random Forest  702 1.032 0.807  0.12891      38.6
+## 4   test          Baseline 1239 1.050 0.790  0.00418      72.3
+## 5   test Linear Regression 1239 0.961 0.740  0.16650      69.6
+## 6   test     Random Forest 1239 0.951 0.738  0.18321      70.0
+## 
+## By whether the district-disease pair has an earlier report:
+##       set             model has_history    n  RMSE   MAE       R2 MAE_cases
+## 1  stress          Baseline           0   66 1.402 1.075  0.10876     137.4
+## 2  stress          Baseline           1  636 1.083 0.861 -0.05451      32.5
+## 3  stress Linear Regression           0   66 1.393 1.072  0.11929     137.5
+## 4  stress Linear Regression           1  636 0.996 0.786  0.10706      30.4
+## 5  stress     Random Forest           0   66 1.413 1.068  0.09441     138.8
+## 6  stress     Random Forest           1  636 0.984 0.780  0.12908      28.2
+## 7    test          Baseline           0  158 1.209 0.891  0.03404     265.6
+## 8    test          Baseline           1 1081 1.025 0.775 -0.00763      44.1
+## 9    test Linear Regression           0  158 1.251 0.947 -0.03536     267.5
+## 10   test Linear Regression           1 1081 0.911 0.710  0.20471      40.7
+## 11   test     Random Forest           0  158 1.204 0.904  0.04163     265.2
+## 12   test     Random Forest           1 1081 0.908 0.714  0.20873      41.5</code></pre>
+<pre class="r"><code>source(file.choose())</code></pre>
+<pre class="r"><code>source(file.choose())</code></pre>
+<pre><code>## Rows - train: 7029 | test: 1239 | stress: 702 
+## High outbreaks - train: 1750 | test: 272 | stress: 131 
+## 
+## mtry validation PR-AUC:
+##   mtry pr_auc
+## 1    3 0.4704
+## 2    6 0.4623
+## 3    9 0.4615
+## 4   12 0.4515
+## Chosen mtry: 3 
+## F1-optimal thresholds (validation) - LR: 0.22 | RF: 0.27 
+## 
+## Test and stress performance:
+##      set                model    n threshold accuracy precision recall    F1
+## 1   test  Logistic Regression 1239      0.22    0.639     0.323  0.585 0.416
+## 2   test        Random Forest 1239      0.27    0.670     0.341  0.540 0.418
+## 3   test Previous report rule 1239      0.50    0.738     0.399  0.379 0.389
+## 4   test           Always Low 1239      0.50    0.780        NA  0.000 0.000
+## 5 stress  Logistic Regression  702      0.22    0.695     0.307  0.504 0.382
+## 6 stress        Random Forest  702      0.27    0.688     0.314  0.565 0.403
+## 7 stress Previous report rule  702      0.50    0.756     0.341  0.328 0.335
+## 8 stress           Always Low  702      0.50    0.813        NA  0.000 0.000
+##   specificity ROC_AUC PR_AUC prevalence
+## 1       0.655   0.670  0.444      0.220
+## 2       0.706   0.684  0.426      0.220
+## 3       0.840   0.609  0.318      0.220
+## 4       1.000   0.500  0.220      0.220
+## 5       0.739   0.665  0.357      0.187
+## 6       0.716   0.670  0.382      0.187
+## 7       0.855   0.591  0.248      0.187
+## 8       1.000   0.500  0.187      0.187
+## 
+## By history (does the district-disease pair have an earlier report?):
+##       set has_history                model    n threshold accuracy precision
+## 1    test           0  Logistic Regression  158      0.22    0.481     0.259
+## 2    test           0        Random Forest  158      0.27    0.563     0.233
+## 3    test           0 Previous report rule  158      0.50    0.810        NA
+## 4    test           0           Always Low  158      0.50    0.810        NA
+## 5    test           1  Logistic Regression 1081      0.22    0.662     0.340
+## 6    test           1        Random Forest 1081      0.27    0.685     0.363
+## 7    test           1 Previous report rule 1081      0.50    0.728     0.399
+## 8    test           1           Always Low 1081      0.50    0.776        NA
+## 9  stress           0  Logistic Regression   66      0.22    0.500     0.356
+## 10 stress           0        Random Forest   66      0.27    0.636     0.429
+## 11 stress           0 Previous report rule   66      0.50    0.697        NA
+## 12 stress           0           Always Low   66      0.50    0.697        NA
+## 13 stress           1  Logistic Regression  636      0.22    0.715     0.294
+## 14 stress           1        Random Forest  636      0.27    0.693     0.298
+## 15 stress           1 Previous report rule  636      0.50    0.763     0.341
+## 16 stress           1           Always Low  636      0.50    0.825        NA
+##    recall    F1 specificity ROC_AUC PR_AUC prevalence
+## 1   0.933 0.406       0.375   0.665  0.335      0.190
+## 2   0.567 0.330       0.562   0.648  0.443      0.190
+## 3   0.000 0.000       1.000   0.500  0.260      0.190
+## 4   0.000 0.000       1.000   0.500  0.190      0.190
+## 5   0.541 0.418       0.697   0.676  0.460      0.224
+## 6   0.537 0.433       0.728   0.691  0.432      0.224
+## 7   0.426 0.412       0.815   0.620  0.326      0.224
+## 8   0.000 0.000       1.000   0.500  0.224      0.224
+## 9   0.800 0.492       0.370   0.607  0.374      0.303
+## 10  0.600 0.500       0.652   0.642  0.464      0.303
+## 11  0.000 0.000       1.000   0.500  0.444      0.303
+## 12  0.000 0.000       1.000   0.500  0.303      0.303
+## 13  0.450 0.356       0.771   0.656  0.349      0.175
+## 14  0.559 0.389       0.722   0.670  0.375      0.175
+## 15  0.387 0.363       0.842   0.615  0.245      0.175
+## 16  0.000 0.000       1.000   0.500  0.175      0.175
+## 
+## Confusion matrix, test - Logistic Regression:
+##       Predicted
+## Actual Low High
+##   Low  633  334
+##   High 113  159
+## 
+## Confusion matrix, test - Random Forest:
+##       Predicted
+## Actual Low High
+##   Low  683  284
+##   High 125  147</code></pre>
 </div>
 
 

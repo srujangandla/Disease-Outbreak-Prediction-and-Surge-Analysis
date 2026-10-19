@@ -1,0 +1,175 @@
+---
+title: "Project Notes: Predicting Disease Outbreaks and Identifying the Factors Behind Case Surges"
+author: "Srujan"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(here)
+library(dplyr)
+library(readr)
+library(knitr)
+```
+
+# Purpose of this file
+
+A running log of decisions, data problems, assumptions and open issues for the EpiClim project. It is the source for the Methods and Limitations sections of the final report. Update it whenever a decision changes, and commit it with the code it describes.
+
+# Project summary
+
+- **Data:** EpiClim, outbreak reports from India (2009 to 2022) with disease, location, cases, deaths, temperature, precipitation and leaf area index (LAI).
+- **Raw file:** 8,985 rows, 15 columns, 791 district labels, 22 disease labels, 36 states/UTs.
+- **Tools:** R, R Markdown, Git/GitHub.
+- **Goals:** trend and seasonal analysis; case-count regression; high-outbreak classification; factor importance; K-Means clustering; association rules.
+
+# Key framing decision
+
+EpiClim is **event-based**: a row exists only when an outbreak was reported. It is not a continuous weekly surveillance series. Most districts have few records over 14 years, so week-ahead forecasting with weekly lags is not possible.
+
+**Question the project answers:** given a reported outbreak, what makes it large?
+
+The project title and objectives should be worded to match this. Check the wording with the supervisor.
+
+# Decisions log
+
+| # | Decision | Reason |
+|---|----------|--------|
+| 1 | Keep EpiClim; do not switch dataset | India-specific, multi-disease, multi-district, three stages already done. Alternatives considered: DengAI, OpenDengue, InfoDengue. Revisit only if the supervisor requires true forecasting. |
+| 2 | High outbreak = `Cases` above the disease-specific 75th percentile | Disease sizes differ a lot; a global cut-off would only flag high-burden diseases. About a quarter of records are High. |
+| 3 | Thresholds computed from **training years only** | Using all years lets test data influence the label. |
+| 4 | Split: train 2009-2017, test 2018-2019, stress 2020-2022 | Time-ordered split avoids using the future to predict the past. 2020-2022 has few records and is likely affected by COVID-era reporting, so it is kept as a separate stress test. |
+| 5 | Model `log_cases`, not raw `Cases` | Raw cases are extremely right-skewed (median 27, mean about 89, maximum above 50,000). |
+| 6 | Rows with non-numeric, zero or negative `Cases` are removed, not set to 0 | A reported outbreak must have at least one case. |
+| 7 | `Deaths` is never imputed and never a predictor | About 72% missing; it is an outcome of the outbreak, so using it leaks information. |
+| 8 | `Temp` converted from Kelvin to Celsius | Raw values range from about 260 to 328. |
+| 9 | Climate gaps flagged in cleaning; imputed later with training-set zone-month medians | Interpolating between unrelated outbreak events is not meaningful; train-only medians avoid leakage. |
+| 10 | Disease labels merged from 22 to 8 groups; the 4 rows left in "Other" are dropped | Spelling and "suspected" variants merged; classes with a handful of rows cannot be modelled. |
+| 11 | Zone (North, South, East, West, Central, North-East) used for grouping | 36 states are too many for clear plots; mapping is approximate and must be stated in the report. |
+
+# Data issues found and how they were handled
+
+| Issue | Handling |
+|-------|----------|
+| Duplicate check originally included the index column `X`, so it could never find duplicates | Drop `X` first, then `distinct()` |
+| `Cases` stored as text; coercion created `NA`; an earlier script replaced them with 0 | Convert once, inspect failures, remove invalid rows |
+| `range()` on text `Cases` gave a lexical range (reported max 993) | Real numeric summary computed after conversion |
+| `week_of_outbreak` is text, so sorting on it is wrong ("10th" before "2nd") | Real `date` built from day, month, year; week kept as `reporting_week` |
+| Reporting week and date are not always consistent (for example "3rd week" with a December date) | Treated as reporting week versus onset date; verify against EpiClim documentation |
+| One district string had 269 characters of corrupted text | Non-ASCII characters removed; fused name handled |
+| District spelling variants (Tumkur/Tumakuru, Bangalore/Bengaluru and others) | Optional alias list in the cleaning script; not merged in the simple version |
+| Latitude/longitude repeat across different districts | Coordinates behave like grid-cell values, so they are not used as a district identifier |
+| `Temp_C` in Kelvin | Converted |
+| LAI maximum of 62 is physically implausible | **Open:** check EpiClim documentation for a scale factor (possibly x0.1) |
+| `cases_growth` feature equalled `log_cases - lag(log_cases)`, so it leaked the target | Removed from feature engineering |
+| Time features (`day_of_year`, `year_index`, month sin/cos) silently missing because `any_of()` dropped absent columns | Created inside `06_feature_engineering.R`; `all_of()` now fails loudly |
+| Zone mapping lacked "daman and diu" and "andaman and nicobar islands" spellings | Mapping fixed; script stops if any state is unmapped |
+
+# Pipeline status
+
+| Script | Purpose | Status |
+|--------|---------|--------|
+| `01_data_loading.R` | Load raw CSV | Done |
+| `02_data_understanding.R` | Structure, missingness, summaries | Done |
+| `03_data_cleaning.R` | Clean and save `cleaned_epiclim.csv` | Done (re-run after fixes) |
+| `04_data_transformation.R` | Zone, log precipitation, time features | Written; superseded by `06` (decide: delete or reuse) |
+| `05_eda.R` | Figures and tables | Done; update zone mapping |
+| `06_feature_engineering.R` | Split, imputation, history features, target | Rewritten; verify it runs |
+| `07_statistical_analysis.R` | Kruskal-Wallis, Spearman, chi-square, VIF | Written; run pending |
+| `08_regression.R` | Linear Regression, Random Forest | Not started |
+| `09_classification.R` | Logistic Regression, Random Forest | Not started |
+| `10_clustering.R` | K-Means | Not started |
+| `11_association_rules.R` | Apriori | Not started |
+| `12_model_evaluation.R` | Compare models | Not started |
+| `13_factor_analysis.R` | Permutation importance | Not started |
+
+# Current results
+
+## Outbreak thresholds (training years)
+
+```{r thresholds, eval = file.exists(here("outputs", "tables", "outbreak_thresholds.csv"))}
+kable(read_csv(here("outputs", "tables", "outbreak_thresholds.csv"), show_col_types = FALSE),
+      digits = 1)
+```
+
+## Class balance by split
+
+```{r split-table, eval = file.exists(here("data", "final", "modeling_data.csv"))}
+md <- read_csv(here("data", "final", "modeling_data.csv"), show_col_types = FALSE)
+kable(count(md, split, high_outbreak) %>% tidyr::pivot_wider(names_from = high_outbreak,
+                                                              values_from = n, values_fill = 0))
+```
+
+## Findings so far
+
+- Raw-scale correlations between cases and climate are close to zero (Temp 0.01, precipitation 0.06, LAI -0.04), so expect weak climate signal.
+- Statistical tests: *(fill in after running `07_statistical_analysis.R`)*
+- Regression results: *(fill in)*
+- Classification results: *(fill in)*
+- Clusters and rules: *(fill in)*
+
+# Modelling rules
+
+1. Predictors must **exclude** `Cases`, `log_cases`, `high_outbreak`, `date` and `split`.
+2. Fit scaling, imputation and tuning on the training split only.
+3. Use time-ordered validation inside the training years, not random folds.
+4. For the classifier, report precision, recall, F1 and PR-AUC, not accuracy alone.
+5. Feature importance is association, not causation; use permutation importance.
+6. Discretise continuous variables before association rule mining.
+7. Report the 2020-2022 stress set separately from the test set.
+
+# Limitations to state in the report
+
+- Event-based reports: no information about periods without a reported outbreak.
+- Records are not independent (repeated reports from the same districts); p-values are indicative.
+- District spelling variants may fragment history features and clusters.
+- Reporting practices vary by state and over time; 2020-2022 is sparse and unusual.
+- Climate variables are satellite or grid-based and coarse; about a quarter of LAI and some temperature values were missing and imputed.
+- Weak climate signal is a legitimate finding, not a failure.
+
+# Version control log
+
+Commit after each stage with a clear message, and tag milestones.
+
+| Tag | Stage | Done |
+|-----|-------|------|
+| `v0.1-loading-understanding` | Scripts 01-02 | [ ] |
+| `v0.2-cleaning` | Script 03 | [ ] |
+| `v0.3-eda` | Scripts 04-05 | [ ] |
+| `v0.4-features` | Script 06 | [ ] |
+| `v0.5-statistics` | Script 07 | [ ] |
+| `v0.6-models` | Scripts 08-09 | [ ] |
+| `v0.7-patterns` | Scripts 10-11 | [ ] |
+| `v1.0-final` | Scripts 12-13 and report | [ ] |
+
+Example: `git add -A`, `git commit -m "Fix cleaning: valid Cases, real dates, train-only features"`, `git tag v0.4-features`.
+
+# Open issues
+
+- [ ] LAI scale factor (documentation check)
+- [ ] Source of reporting week versus onset date
+- [ ] Decide whether to merge district spelling variants before clustering
+- [ ] Decide fate of `04_data_transformation.R`
+- [ ] Check the largest `Cases` record (above 50,000): real outbreak or data error?
+- [ ] Confirm title and objectives with the supervisor
+
+# Questions to be able to answer at the viva
+
+- Why this surge definition, and why training-only thresholds?
+- Why a time-ordered split, and why 2017?
+- Why `log_cases`, and why is accuracy a poor metric here?
+- What leakage did you find and remove?
+- What does a weak climate correlation mean for your conclusions?
+
+# Reproducibility
+
+Run the scripts in numeric order from the project root, in a fresh R session.
+
+```{r session-info, echo = TRUE}
+sessionInfo()
+```

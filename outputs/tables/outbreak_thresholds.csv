@@ -1,0 +1,8 @@
+Disease,n_train,outbreak_threshold
+Acute Diarrhoeal Disease,4172,51
+Acute Encephalitis Syndrome,90,43
+Chikungunya,517,48
+Cholera,572,78.25
+Dengue,1168,56
+Dengue And Chikungunya,48,50.5
+Malaria,462,96.75

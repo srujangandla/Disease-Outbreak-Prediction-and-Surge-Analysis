@@ -40,3 +40,16 @@ source(file.choose())
 source(file.choose())
 ```
 
+```{r regression_model}
+source(file.choose())
+```
+
+```{r clustering}
+source(file.choose())
+```
+
+```{r classification}
+source(file.choose())
+```
+
+

@@ -1,0 +1,25 @@
+"set","subset","model","n","accuracy","precision","recall","F1","specificity","ROC_AUC","PR_AUC","prevalence"
+"test","All","Logistic Regression",1239,0.685,0.353,0.522,0.421,0.731,0.673,0.438,0.22
+"test","All","Random Forest",1239,0.662,0.341,0.577,0.428,0.686,0.686,0.431,0.22
+"test","All","Previous report rule",1239,0.743,0.406,0.375,0.39,0.846,0.61,0.29,0.22
+"test","All","Always Low",1239,0.78,NA,0,0,1,0.5,0.22,0.22
+"test","has_history=1","Logistic Regression",1081,0.704,0.377,0.496,0.429,0.764,0.677,0.452,0.224
+"test","has_history=1","Random Forest",1081,0.671,0.356,0.583,0.442,0.696,0.691,0.44,0.224
+"test","has_history=1","Previous report rule",1081,0.733,0.406,0.421,0.414,0.822,0.622,0.301,0.224
+"test","has_history=1","Always Low",1081,0.776,NA,0,0,1,0.5,0.224,0.224
+"test","has_history=0","Logistic Regression",158,0.557,0.262,0.733,0.386,0.516,0.667,0.323,0.19
+"test","has_history=0","Random Forest",158,0.601,0.246,0.533,0.337,0.617,0.655,0.422,0.19
+"test","has_history=0","Previous report rule",158,0.81,NA,0,0,1,0.5,0.19,0.19
+"test","has_history=0","Always Low",158,0.81,NA,0,0,1,0.5,0.19,0.19
+"stress","All","Logistic Regression",702,0.748,0.342,0.382,0.361,0.832,0.675,0.367,0.187
+"stress","All","Random Forest",702,0.679,0.309,0.58,0.403,0.702,0.678,0.386,0.187
+"stress","All","Previous report rule",702,0.766,0.361,0.328,0.344,0.867,0.598,0.244,0.187
+"stress","All","Always Low",702,0.813,NA,0,0,1,0.5,0.187,0.187
+"stress","has_history=1","Logistic Regression",636,0.761,0.328,0.351,0.339,0.848,0.67,0.361,0.175
+"stress","has_history=1","Random Forest",636,0.682,0.294,0.586,0.392,0.703,0.679,0.381,0.175
+"stress","has_history=1","Previous report rule",636,0.774,0.361,0.387,0.374,0.855,0.621,0.247,0.175
+"stress","has_history=1","Always Low",636,0.825,NA,0,0,1,0.5,0.175,0.175
+"stress","has_history=0","Logistic Regression",66,0.621,0.407,0.55,0.468,0.652,0.607,0.42,0.303
+"stress","has_history=0","Random Forest",66,0.652,0.44,0.55,0.489,0.696,0.658,0.477,0.303
+"stress","has_history=0","Previous report rule",66,0.697,NA,0,0,1,0.5,0.303,0.303
+"stress","has_history=0","Always Low",66,0.697,NA,0,0,1,0.5,0.303,0.303

@@ -1,0 +1,19 @@
+"set","subset","model","n","RMSE","MAE","R2","MAE_cases"
+"test","All","Baseline (train mean)",1239,1.07,0.823,-0.033,73.313
+"test","All","Linear Regression",1239,0.955,0.734,0.177,69.434
+"test","All","Random Forest",1239,0.949,0.734,0.187,69.878
+"test","has_history=1","Baseline (train mean)",1081,1.034,0.802,-0.026,44.912
+"test","has_history=1","Linear Regression",1081,0.907,0.706,0.212,40.577
+"test","has_history=1","Random Forest",1081,0.907,0.711,0.211,41.37
+"test","has_history=0","Baseline (train mean)",158,1.286,0.962,-0.094,267.63
+"test","has_history=0","Linear Regression",158,1.235,0.928,-0.008,266.868
+"test","has_history=0","Random Forest",158,1.197,0.89,0.054,264.923
+"stress","All","Baseline (train mean)",702,1.178,0.939,-0.136,44.065
+"stress","All","Linear Regression",702,1.026,0.798,0.138,40.098
+"stress","All","Random Forest",702,1.03,0.801,0.132,38.174
+"stress","has_history=1","Baseline (train mean)",636,1.141,0.916,-0.171,34.151
+"stress","has_history=1","Linear Regression",636,0.981,0.771,0.134,30.045
+"stress","has_history=1","Random Forest",636,0.984,0.775,0.128,27.882
+"stress","has_history=0","Baseline (train mean)",66,1.49,1.157,-0.008,139.606
+"stress","has_history=0","Linear Regression",66,1.391,1.054,0.123,136.974
+"stress","has_history=0","Random Forest",66,1.394,1.051,0.119,137.357

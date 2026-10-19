@@ -1,0 +1,410 @@
+---
+title: "Predicting Disease Outbreaks and Identifying the Factors Behind Case Surges"
+subtitle: "A data-driven analysis of the EpiClim dataset for India"
+author: "Srujan"
+date: "`r format(Sys.Date(), '%d %B %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    number_sections: true
+    theme: flatly
+params:
+  run_pipeline: false
+  show_code: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = params$show_code, warning = FALSE, message = FALSE,
+                      fig.align = "center", out.width = "85%")
+library(here)
+library(dplyr)
+library(readr)
+library(knitr)
+knitr::opts_knit$set(root.dir = here::here())
+
+# Helpers: read saved tables and figures, and fail politely if they do not exist yet
+tab_path <- function(f) here("outputs", "tables", f)
+read_tab_df <- function(f) if (file.exists(tab_path(f))) read_csv(tab_path(f), show_col_types = FALSE) else NULL
+show_tab <- function(f, digits = 3, caption = NULL) {
+  d <- read_tab_df(f)
+  if (is.null(d)) return(knitr::asis_output(paste0("*Table `", f, "` not found. Run the pipeline first.*")))
+  kable(d, digits = digits, caption = caption)
+}
+show_fig <- function(folder, files) {
+  p <- here("outputs", "figures", folder, files)
+  ok <- file.exists(p)
+  if (!any(ok)) return(knitr::asis_output("*Figures not found. Run the pipeline first.*"))
+  knitr::include_graphics(p[ok])
+}
+```
+
+```{r pipeline, eval = params$run_pipeline, results = "hide"}
+# Re-runs the analysis from the raw CSV. Render with:
+# rmarkdown::render("reports/final_report.Rmd", params = list(run_pipeline = TRUE))
+scripts <- c("03_data_cleaning.R", "05_eda.R", "06_feature_engineering.R",
+             "07_statistical_analysis.R", "08_regression.R", "09_classification.R",
+             "10_clustering.R", "11_association_rules.R", "12_model_evaluation.R",
+             "13_factor_analysis.R")
+for (s in scripts) {
+  path <- here("R", s)
+  if (file.exists(path)) source(path, local = new.env()) else message("Skipped (not written yet): ", s)
+}
+```
+
+# Abstract
+
+*(Write this last, in 150 to 200 words.)* State, in this order: the problem (outbreak reports in India and what makes some outbreaks large), the data (EpiClim, 2009 to 2022), the methods (regression, classification, clustering, association rules), the main findings with your actual numbers, and the main limitation (event-based reports, weak climate signal).
+
+# Introduction
+
+## Background
+
+Infectious diseases such as acute diarrhoeal disease, dengue, chikungunya, cholera and malaria cause recurring outbreaks across India. Climate conditions such as temperature, rainfall and vegetation are widely believed to influence outbreaks, but the strength of that relationship at district level is an empirical question.
+
+## Problem statement
+
+Given a reported outbreak in an Indian district, can we predict how large it will be, can we predict whether it will be unusually large for its disease, and which factors are associated with large outbreaks?
+
+## Objectives
+
+1. Analyse disease patterns across time, location and disease type, including seasonality.
+2. Predict the size of reported outbreaks (case counts) using Multiple Linear Regression and Random Forest regression.
+3. Predict whether a reported outbreak is a *surge* (unusually large for its disease) using Logistic Regression and Random Forest classification.
+4. Identify the factors most associated with large outbreaks.
+5. Discover recurring patterns using K-Means clustering and association rule mining.
+
+## Scope note
+
+The EpiClim records are **event-based**: a row exists only when an outbreak was reported. The data is not a continuous weekly surveillance series, so the project predicts the size of reported outbreaks, not the occurrence of outbreaks in a future week.
+
+# Data
+
+## Source and variables
+
+The EpiClim dataset provides district-level outbreak reports from India with matching climate variables.
+
+| Variable | Description |
+|----------|-------------|
+| `state_ut`, `district` | Location of the report |
+| `Disease` | Disease name (22 raw labels, standardised in cleaning) |
+| `Cases`, `Deaths` | Reported cases and deaths |
+| `day`, `mon`, `year`, `week_of_outbreak` | Date fields and reporting week |
+| `Latitude`, `Longitude` | Coordinates (grid-cell values, not district identifiers) |
+| `Temp` | Temperature in Kelvin (converted to Celsius) |
+| `preci` | Precipitation (units as defined in the EpiClim documentation) |
+| `LAI` | Leaf area index (vegetation); scale to be confirmed from the documentation |
+
+## Dataset size at each stage
+
+```{r sizes}
+raw_p <- here("data", "raw", "EpiClim.csv")
+cln_p <- here("data", "processed", "cleaned_epiclim.csv")
+mod_p <- here("data", "final", "modeling_data.csv")
+sizes <- data.frame(
+  stage = c("Raw file", "After cleaning", "Modelling dataset"),
+  rows = c(if (file.exists(raw_p)) nrow(read_csv(raw_p, show_col_types = FALSE)) else NA,
+           if (file.exists(cln_p)) nrow(read_csv(cln_p, show_col_types = FALSE)) else NA,
+           if (file.exists(mod_p)) nrow(read_csv(mod_p, show_col_types = FALSE)) else NA)
+)
+kable(sizes, caption = "Rows at each stage")
+```
+
+# Methodology
+
+## Overall workflow
+
+```
+EpiClim raw data
+      |
+Cleaning  ->  Transformation / feature engineering
+      |
+Exploratory analysis  ->  Statistical analysis
+      |
+ +----+-----------------------------+
+ |                                  |
+Regression (log cases)       Classification (high outbreak)
+ |                                  |
+ +----------------+-----------------+
+                  |
+        Model evaluation + factor importance
+                  |
+     K-Means clustering  +  Association rules
+                  |
+         Final interpretation
+```
+
+## Data cleaning
+
+- Removed the index column and exact duplicates.
+- Converted `Cases` to numeric and removed rows that were non-numeric, zero or negative (a reported outbreak must have at least one case).
+- Built a real date from day, month and year; kept the reporting week separately.
+- Standardised disease names (22 labels merged into 8 groups) and dropped the handful of rows in the residual "Other" group.
+- Tidied place names (removed corrupted characters and punctuation).
+- Converted temperature from Kelvin to Celsius.
+- Did **not** impute `Deaths` (about 72% missing); it is an outcome of the outbreak and is never used as a predictor.
+- Flagged missing climate values; they are imputed later using training-set medians only.
+
+## Feature engineering
+
+- **Target for regression:** `log_cases = log(1 + Cases)`, because raw cases are extremely right-skewed.
+- **Target for classification:** `high_outbreak` = `Cases` above the disease-specific 75th percentile, calculated from training years only.
+- **Climate features:** temperature, log precipitation, leaf area index, with missing-value flags.
+- **Time features:** month as sine and cosine, season, zone.
+- **History features** (past reports of the same district and disease only): previous log cases, three-report rolling mean, days since previous report, number of prior reports.
+
+## Train, test and stress split
+
+| Set | Years | Purpose |
+|-----|-------|---------|
+| Train | 2009 to 2017 | Fit models, tune settings, compute thresholds and imputation values |
+| Test | 2018 to 2019 | Final evaluation |
+| Stress | 2020 to 2022 | Separate check; sparse and likely affected by COVID-era reporting |
+
+A time-ordered split is used because predicting past years from future years would give misleadingly good results.
+
+```{r split-table}
+d <- if (file.exists(mod_p)) read_csv(mod_p, show_col_types = FALSE) else NULL
+if (!is.null(d)) kable(count(d, split, high_outbreak), caption = "Records by split and outbreak class")
+```
+
+## Models and evaluation
+
+| Task | Models | Metrics |
+|------|--------|---------|
+| Regression | Multiple Linear Regression, Random Forest, disease-median baseline | RMSE, MAE, R-squared on the log scale |
+| Classification | Logistic Regression, Random Forest, previous-report rule, always-Low | Precision, recall, F1, ROC-AUC, PR-AUC |
+| Clustering | K-Means on district profiles | Elbow plot, average silhouette |
+| Patterns | Apriori association rules | Support, confidence, lift |
+
+Random Forest settings were tuned on a time-ordered validation slice inside the training years. Classification thresholds were chosen by maximising F1 on that validation slice, never on the test set.
+
+# Exploratory data analysis
+
+## Outcome distribution
+
+```{r eda-outcome, out.width = "48%"}
+show_fig("eda", c("01_cases_raw.png", "02_cases_log.png"))
+```
+
+> **Interpretation:** *Describe the skew (compare median and mean), and explain why the log scale is used.*
+
+## Diseases
+
+```{r eda-disease}
+show_tab("eda_disease_summary.csv", caption = "Outbreak records by disease")
+```
+
+```{r eda-disease-fig, out.width = "48%"}
+show_fig("eda", c("03_disease_counts.png", "04_disease_boxplot.png"))
+```
+
+## Time and seasonality
+
+```{r eda-time, out.width = "48%"}
+show_fig("eda", c("05_yearly_records.png", "06_monthly_records.png"))
+```
+
+```{r eda-season}
+show_fig("eda", "07_season_boxplot.png")
+```
+
+> **Interpretation:** *Which months and seasons have the most reported outbreaks? Remember this reflects reporting patterns as well as disease activity.*
+
+## Geography
+
+```{r eda-geo, out.width = "48%"}
+show_fig("eda", c("08_zone_boxplot.png", "09_top_states.png"))
+```
+
+```{r eda-map}
+show_fig("eda", "10_spatial_scatter.png")
+```
+
+## Climate relationships
+
+```{r eda-climate}
+show_fig("eda", c("11_climate_scatter.png", "13_correlation_heatmap.png"))
+```
+
+> **Interpretation:** *Are the relationships between cases and climate visible? State the correlation sizes honestly.*
+
+## Missing data
+
+```{r eda-missing}
+show_tab("eda_missingness.csv", digits = 1, caption = "Percentage of missing values (cleaned data)")
+```
+
+# Statistical analysis
+
+## Group differences (Kruskal-Wallis)
+
+```{r stats-kw}
+show_tab("stats_kruskal.csv", caption = "Does log(Cases) differ between groups? epsilon_sq is the effect size")
+```
+
+## Correlation with log cases (Spearman)
+
+```{r stats-sp}
+show_tab("stats_spearman.csv", caption = "Spearman correlations with log(Cases), Holm-adjusted p-values")
+```
+
+## Association with outbreak class
+
+```{r stats-chi}
+show_tab("stats_chisq.csv", caption = "Chi-square tests of high_outbreak against season and zone")
+```
+
+```{r stats-clim}
+show_tab("stats_climate_by_outbreak.csv", caption = "Climate medians in Low and High outbreaks")
+```
+
+## Multicollinearity
+
+```{r stats-vif}
+show_tab("stats_vif.csv", caption = "Variance inflation factors")
+```
+
+> **Interpretation:** *Which factors show statistically and practically meaningful effects? Distinguish a small p-value from a large effect size. Note that records from the same district are not independent, so p-values are indicative.*
+
+# Regression: predicting outbreak size
+
+```{r reg-metrics}
+show_tab("regression_metrics.csv", caption = "Regression performance (log scale; MAE_cases is on the original scale)")
+```
+
+```{r reg-hist}
+show_tab("regression_metrics_by_history.csv", caption = "Performance by whether an earlier report exists")
+```
+
+```{r reg-fig, out.width = "48%"}
+show_fig("regression", c("01_pred_vs_actual_test.png", "04_error_by_model.png"))
+```
+
+```{r reg-diag, out.width = "48%"}
+show_fig("regression", c("02_lm_residuals.png", "03_rf_importance.png"))
+```
+
+> **Interpretation:** *Do the models beat the baseline on the test years? How much variance is explained? Where do they fail (no-history rows, extreme outbreaks)?*
+
+# Classification: predicting surges
+
+```{r clf-thr}
+show_tab("outbreak_thresholds.csv", digits = 1, caption = "Surge thresholds by disease (training years)")
+```
+
+```{r clf-metrics}
+show_tab("classification_metrics.csv", caption = "Classification performance")
+```
+
+```{r clf-fig, out.width = "48%"}
+show_fig("classification", c("01_roc_test.png", "02_pr_test.png"))
+```
+
+```{r clf-hist}
+show_tab("classification_metrics_by_history.csv", caption = "Performance by whether an earlier report exists")
+```
+
+> **Interpretation:** *Compare PR-AUC to the prevalence and to the previous-report rule. Explain why accuracy alone is misleading here (the always-Low model).*
+
+# Important factors
+
+```{r factors-rf, out.width = "48%"}
+show_fig("classification", c("03_rf_importance.png", "04_lr_odds_ratios.png"))
+```
+
+```{r factors-tab}
+show_tab("classification_rf_importance.csv", caption = "Random forest permutation importance (classification)")
+```
+
+> **Interpretation:** *Rank the factors (previous case counts, temperature, precipitation, season, disease, location, time) using agreement across Spearman, importance and odds ratios. These are associations, not causes.*
+
+# Clustering
+
+```{r clu-k, out.width = "48%"}
+show_fig("clustering", c("01_elbow.png", "02_silhouette.png"))
+```
+
+```{r clu-prof}
+show_tab("clustering_profiles.csv", digits = 2, caption = "Cluster profiles (original units)")
+```
+
+```{r clu-fig, out.width = "48%"}
+show_fig("clustering", c("03_pca_clusters.png", "04_cluster_profiles.png"))
+```
+
+```{r clu-map, out.width = "48%"}
+show_fig("clustering", c("05_map_clusters.png", "06_cluster_zone.png"))
+```
+
+> **Interpretation:** *Report the average silhouette honestly (above 0.5 strong, 0.25 to 0.5 weak, below 0.25 no real structure). Describe each cluster in plain language using the profile table.*
+
+# Association rules
+
+*Script `11_association_rules.R` writes `outputs/tables/association_rules.csv`. Continuous variables are discretised before Apriori is run.*
+
+```{r rules}
+show_tab("rules_patterns.csv", caption = "Top association rules for high outbreaks (sorted by lift)")
+```
+
+> **Interpretation:** *Which combinations of conditions recur in high outbreaks? Report support, confidence and lift, and state that rules describe co-occurrence, not causation.*
+
+# Model comparison and discussion
+
+```{r headline, results = "asis"}
+reg <- read_tab_df("regression_metrics.csv")
+clf <- read_tab_df("classification_metrics.csv")
+if (!is.null(reg)) {
+  b <- reg %>% filter(set == "test", model != "Baseline") %>% arrange(RMSE) %>% slice(1)
+  base <- reg %>% filter(set == "test", model == "Baseline")
+  cat(sprintf("- **Regression:** best model on test years is **%s** (RMSE %.2f, R-squared %.2f); the disease-median baseline has RMSE %.2f.\n",
+              b$model, b$RMSE, b$R2, base$RMSE))
+}
+if (!is.null(clf)) {
+  b <- clf %>% filter(set == "test", !model %in% c("Always Low", "Previous report rule")) %>%
+    arrange(desc(PR_AUC)) %>% slice(1)
+  rule <- clf %>% filter(set == "test", model == "Previous report rule")
+  cat(sprintf("- **Classification:** best model on test years is **%s** (PR-AUC %.2f, F1 %.2f, prevalence %.2f); the previous-report rule has PR-AUC %.2f.\n",
+              b$model, b$PR_AUC, b$F1, b$prevalence, rule$PR_AUC))
+}
+```
+
+> **Discussion:** *Answer each objective in one paragraph: what you found, how strong the evidence is, and what it means. Include the finding about climate even if it is weak.*
+
+# Limitations
+
+- Reports are event-based, so there is no information about periods without a reported outbreak, and week-ahead forecasting is not possible.
+- Records from the same district are not independent, so p-values and intervals are indicative.
+- District spelling variants may fragment history features and clusters.
+- Reporting practices vary by state and over time; 2020 to 2022 is sparse and unusual.
+- Climate variables are grid or satellite based and coarse; a share of leaf area index and temperature values were missing and imputed.
+- Feature importance and association rules describe association, not causation.
+
+# Conclusion
+
+*(Write after the results.)* Summarise the answer to each objective in one or two sentences, state the main limitation, and say what you would do with better data.
+
+## Future work
+
+- Use dense weekly surveillance data to forecast outbreak occurrence.
+- Add spatial and hierarchical models that account for repeated reports from the same district.
+- Merge district name variants with an authoritative district list.
+
+# Reproducibility
+
+- Run the scripts in `R/` in numeric order from the project root, or render this file with `params = list(run_pipeline = TRUE)`.
+- Render with `params = list(show_code = TRUE)` to produce a version that shows the R code (the notebook version).
+- Version history is kept in Git, with a tag per stage (see `docs/project_notes.Rmd`).
+
+```{r session, echo = TRUE}
+sessionInfo()
+```
+
+# References
+
+- Breiman, L. (2001). Random forests. *Machine Learning*, 45(1), 5 to 32.
+- Agrawal, R., and Srikant, R. (1994). Fast algorithms for mining association rules. *Proceedings of VLDB*.
+- Rousseeuw, P. J. (1987). Silhouettes: a graphical aid to the interpretation and validation of cluster analysis. *Journal of Computational and Applied Mathematics*, 20, 53 to 65.
+- MacQueen, J. (1967). Some methods for classification and analysis of multivariate observations. *Proceedings of the Fifth Berkeley Symposium*.
+- *(Add: the EpiClim dataset paper or source, and the R Core Team and package citations. Verify all citation details before submitting.)*

@@ -1,0 +1,17 @@
+"target","group","importance","share"
+"Case count (log_cases)","Past cases",0.493832960942199,32.1
+"Case count (log_cases)","Location",0.457855224846305,29.8
+"Case count (log_cases)","Climate interaction",0.163419114329193,10.6
+"Case count (log_cases)","Season / time",0.107430355055149,7
+"Case count (log_cases)","Rainfall",0.0994379729530783,6.5
+"Case count (log_cases)","Disease",0.0900048107902506,5.9
+"Case count (log_cases)","Vegetation (LAI)",0.062910405026509,4.1
+"Case count (log_cases)","Temperature",0.0622141663054447,4
+"Surge (high_outbreak)","Past cases",0.0532594006595196,32.4
+"Surge (high_outbreak)","Location",0.0478865868946598,29.1
+"Surge (high_outbreak)","Climate interaction",0.0216026627587945,13.1
+"Surge (high_outbreak)","Rainfall",0.0139866523447518,8.5
+"Surge (high_outbreak)","Season / time",0.0094196700080897,5.7
+"Surge (high_outbreak)","Temperature",0.00684265633922175,4.2
+"Surge (high_outbreak)","Vegetation (LAI)",0.00686000360009033,4.2
+"Surge (high_outbreak)","Disease",0.00472849332295092,2.9
