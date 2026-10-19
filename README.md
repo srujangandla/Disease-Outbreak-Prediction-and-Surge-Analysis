@@ -21,17 +21,16 @@ An end-to-end data science project in **R** that analyses district-level outbrea
 11. [Lessons learned](#lessons-learned)
 12. [Project status](#project-status)
 13. [Reproducibility and version control](#reproducibility-and-version-control)
-14. [About and acknowledgements](#about-and-acknowledgements)
 
 ---
 
 ## Why this project
 
-Every year, outbreaks of diarrhoeal disease, dengue, chikungunya, cholera and malaria hit districts across India. Some stay small. Others grow into large events that overwhelm local health systems. Public health teams constantly ask the same question: *is this going to be a big one?*
+Every year, outbreaks of diarrhoeal disease, dengue, chikungunya, cholera and malaria hit districts across India. Some stay small. Others grow into large events that overwhelm local health systems. Public health teams constantly ask the same question:* Is this going to be a big one?*
 
-Climate is often blamed. Heavy rain, warm temperatures and green vegetation are all linked to mosquito-borne and water-borne disease. But how strong is that link when you test it on real district-level reports? And how much of an outbreak's size can be explained by something much simpler, like what happened in the same district last time?
+Climate is often blamed. Heavy rain, warm temperatures, and green vegetation are all linked to mosquito-borne and water-borne diseases. But how strong is that link when you test it on real district-level reports? And how much of an outbreak's size can be explained by something much simpler, like what happened in the same district last time?
 
-I wanted to answer these questions with data instead of assumptions, and to do it in a way that is **reproducible, leakage-free and honest about its limits**.
+I wanted to answer these questions with data instead of assumptions, and to do it in a way that is **reproducible, leakage-free, and honest about its limits**.
 
 ## An honest note about the data
 
@@ -46,11 +45,11 @@ I started with the wider framing ("predict future surges") and changed it once I
 
 ## Research questions
 
-1. **Patterns:** how do reported outbreaks vary across time, place and disease? Is there seasonality?
-2. **Size prediction:** can we predict the size of a reported outbreak (log of case counts)?
+1. **Patterns:** How do reported outbreaks vary across time, place, and disease? Is there seasonality?
+2. **Size prediction:** Can we predict the size of a reported outbreak (log of case counts)?
 3. **Surge prediction:** can we predict whether an outbreak is *unusually large for its disease*?
-4. **Factors:** which variables are most associated with large outbreaks: previous case counts, temperature, precipitation, season, disease, location?
-5. **Structure:** do districts group into meaningful profiles (K-Means), and do certain combinations of conditions recur in large outbreaks (association rules)?
+4. **Factors:** Which variables are most associated with large outbreaks: previous case counts, temperature, precipitation, season, disease, location?
+5. **Structure:** Do districts group into meaningful profiles (K-Means), and do certain combinations of conditions recur in large outbreaks (association rules)?
 
 ## The dataset
 
@@ -110,9 +109,9 @@ Regression                    Classification
 Predicting_Disease_Outbreaks/
 ├── Predicting_Disease_Outbreaks.Rproj
 ├── data/
-│   ├── raw/            EpiClim.csv (you add this)
-│   ├── processed/      cleaned_epiclim.csv
-│   └── final/          modeling_data.csv
+│   ├── raw/            
+│   ├── processed/     
+│   └── final/         
 ├── R/
 │   ├── 01_data_loading.R
 │   ├── 02_data_understanding.R
@@ -133,7 +132,7 @@ Predicting_Disease_Outbreaks/
 │   ├── figures/        eda/, regression/, classification/, clustering/
 │   ├── tables/         metrics, tests, importance, thresholds, clusters
 │   └── models/         saved model objects (.rds)
-├── docs/               project_notes.Rmd (decision log)
+├── docs/               project_notes.Rmd 
 └── README.md
 ```
 
@@ -197,12 +196,7 @@ These are the choices that protect the results from fooling me.
 
 ## Results
 
-> **Status:** results will be added here after the final validated run. I would rather leave this empty than publish numbers I have not checked.
-
-| Task | Best model | Key metric (test years) | Baseline |
-|------|-----------|-------------------------|----------|
-| Outbreak size (regression) | *TBD* | *TBD* | *TBD* |
-| Surge prediction (classification) | *TBD* | *TBD* | *TBD* |
+To BE Added After Final Validated Run
 
 Planned sections once results exist:
 
@@ -253,34 +247,18 @@ A few things I got wrong on the first pass, and fixed, because they are the sort
 
 ## Reproducibility and version control
 
-Work is tracked in Git with a tag per stage, so the history shows how the project developed:
-
-| Tag | Stage |
-|-----|-------|
-| `v0.1-loading-understanding` | Scripts 01 to 02 |
-| `v0.2-cleaning` | Script 03 |
-| `v0.3-eda` | Scripts 04 to 05 |
-| `v0.4-features` | Script 06 |
-| `v0.5-statistics` | Script 07 |
-| `v0.6-models` | Scripts 08 to 09 |
-| `v0.7-patterns` | Scripts 10 to 11 |
-| `v1.0-final` | Evaluation, factor analysis and final report |
+Work is tracked in Git with a tag per stage, so the history shows how the project developed.
 
 Random seeds are fixed (`set.seed(42)`), paths use the `here` package, and the report records `sessionInfo()` at the end. For stricter reproducibility, consider locking package versions with `renv`.
 
 The reasoning behind each decision, and the list of data problems found, lives in [`docs/project_notes.Rmd`](docs/project_notes.Rmd).
 
-## About and acknowledgements
 
 **Author:** Srujan, student of Artificial Intelligence and Data Science.
-**Institution / course:** *(add)*
-**Supervisor:** *(add)*
-**Contact:** *(add GitHub profile or email)*
 
 **Data:** EpiClim dataset. *(Add the full citation, link and licence.)*
 
 **Tools:** R, RStudio, R Markdown, and the packages `dplyr`, `ggplot2`, `randomForest`, `cluster`, `arules`, `here`, `readr` and `tidyr`.
 
-**License:** *(choose one, for example MIT for the code, and check that it is compatible with the data licence)*
 
-If you find a bug, a leakage risk I missed or a better way to handle any of the problems above, issues and suggestions are very welcome.
+This Project is Open Source and project Licensed Under Mit License.
