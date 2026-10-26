@@ -226,25 +226,6 @@ A few things I got wrong on the first pass, and fixed, because they are the sort
 - Computing medians and thresholds on the full dataset lets test years influence training.
 - The honest answer to "what can this data do?" was different from the one I started with, and it was better to change the question than to bend the data.
 
-## Project status
-
-- [x] Data loading and understanding
-- [x] Data cleaning
-- [x] Exploratory data analysis
-- [x] Feature engineering (train-only statistics, leakage fixes)
-- [x] Statistical analysis script
-- [x] Regression script
-- [x] Classification script
-- [x] Clustering script
-- [ ] Validate scripts 06 to 10 on the full data and review results
-- [ ] Association rule mining (`11_association_rules.R`)
-- [ ] Model evaluation summary (`12_model_evaluation.R`)
-- [ ] Factor analysis summary (`13_factor_analysis.R`)
-- [ ] Final report and conclusions
-- [ ] Resolve open data questions (leaf area index scale, largest case record, district name variants)
-
-`04_data_transformation.R` is kept for reference; its features are now built inside `06_feature_engineering.R`.
-
 ## Reproducibility and version control
 
 Work is tracked in Git with a tag per stage, so the history shows how the project developed.
