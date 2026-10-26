@@ -1,0 +1,661 @@
+---
+title: "Predicting Disease Outbreaks and Identifying the Factors Behind Case Surges"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    toc: false
+    number_sections: false
+    fig_caption: true
+    keep_tex: false
+geometry: margin=0.6in
+fontsize: 9pt
+header-includes:
+  - \usepackage{microtype}
+  - \usepackage{titlesec}
+  - \titlespacing*{\section}{0pt}{1.0ex}{0.5ex}
+  - \titlespacing*{\subsection}{0pt}{0.8ex}{0.3ex}
+  - \usepackage{float}
+  - \floatplacement{figure}{H}
+  - \setlength{\parskip}{2pt}
+  - \setlength{\parindent}{0pt}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE, warning = FALSE, message = FALSE,
+  fig.align = "center", out.width = "0.72\\linewidth",
+  dpi = 130, comment = NA, fig.pos = "H"
+)
+options(width = 90)
+```
+
+```{r packages, include=FALSE}
+# Install any missing package, then load all of them.
+required <- c("dplyr", "tidyr", "readr", "ggplot2", "knitr", "here")
+for (pkg in required) {
+  if (!requireNamespace(pkg, quietly = TRUE)) install.packages(pkg)
+  library(pkg, character.only = TRUE)
+}
+knitr::opts_knit$set(root.dir = here::here())
+```
+
+```{r helpers, echo=FALSE}
+root <- here::here()
+headline <- list()   # one-line findings collected as the document runs
+
+tab_file <- function(f) file.path(root, "outputs", "tables", f)
+fig_file <- function(folder, f) file.path(root, "outputs", "figures", folder, f)
+read_tab <- function(f) if (file.exists(tab_file(f))) readr::read_csv(tab_file(f), show_col_types = FALSE) else NULL
+
+show_tab <- function(f, digits = 3) {
+  d <- read_tab(f)
+  if (is.null(d)) return(knitr::asis_output(paste0("*Table `", f, "` not found. Run the script that produces it.*")))
+  knitr::kable(d, digits = digits)
+}
+show_fig <- function(folder, f) {
+  if (!file.exists(fig_file(folder, f))) return(knitr::asis_output(paste0("*Figure `", f, "` not found. Run the script that produces it.*")))
+  knitr::include_graphics(fig_file(folder, f))
+}
+
+say <- function(x) cat(x, "\n\n", sep = "")
+bullets <- function(x) cat(paste0("- ", x, collapse = "\n"), "\n\n", sep = "")
+
+# Wording rules of thumb used by the automatic interpretations in this document.
+# They are conventions, not laws; adjust them if your supervisor prefers others.
+strength_r  <- function(r) { a <- abs(r); if (is.na(a)) "unknown" else if (a < 0.1) "negligible" else if (a < 0.3) "weak" else if (a < 0.5) "moderate" else "strong" }
+effect_eps  <- function(e) if (e < 0.01) "negligible" else if (e < 0.06) "small" else if (e < 0.14) "moderate" else "large"
+effect_v    <- function(v) if (v < 0.1) "negligible" else if (v < 0.3) "small" else if (v < 0.5) "medium" else "large"
+sil_words   <- function(s) if (s > 0.5) "strong cluster structure" else if (s >= 0.25) "weak cluster structure" else "no substantial cluster structure"
+p_txt       <- function(p) if (is.na(p)) "p = NA" else if (p < 0.001) "p < 0.001" else sprintf("p = %.3f", p)
+improve_words <- function(pct) {
+  if (pct < 0) "worse than the baseline"
+  else if (pct < 5) "no meaningful improvement over the baseline"
+  else if (pct < 15) "a modest improvement over the baseline"
+  else "a clear improvement over the baseline"
+}
+r2_words <- function(r2) {
+  if (r2 < 0) "negative, meaning the model does worse than simply predicting the average of the evaluation years"
+  else if (r2 < 0.1) "very low, so almost none of the variation is explained"
+  else if (r2 < 0.3) "modest"
+  else if (r2 < 0.5) "moderate"
+  else "substantial"
+}
+set_label <- function(s) c(test = "Test years (2018 to 2019)", stress = "Stress years (2020 to 2022)")[[s]]
+```
+
+# Project overview
+
+This report presents the main results of the disease-outbreak project. It summarises the data, statistical tests, prediction models, important factors and district clusters. Tables and figures are loaded from results already produced by the project scripts.
+
+The analysis describes reported outbreak records. It can identify patterns and associations, but it cannot prove that a factor causes an outbreak.
+
+## Project files
+
+The report reads cleaned data from `data/processed/`, modelling data from `data/final/`, and saved tables and figures from `outputs/`. Run the relevant project scripts first if these files are missing.
+
+# Metric guide
+
+| Metric | Meaning |
+|---|---|
+| RMSE / MAE | Prediction error; lower is better. |
+| R-squared | Variation explained by the regression model. |
+| Precision / Recall | Precision reflects false alarms; recall reflects missed High outbreaks. |
+| F1 / ROC-AUC / PR-AUC | Measures classification performance at or across thresholds. |
+| Lift | Above 1 indicates a positive association in a rule. |
+
+# The datasets
+
+## What the data files contain
+
+`cleaned_epiclim.csv` holds one row per valid outbreak report after cleaning. `modeling_data.csv` adds the engineered features, the **split** (train, test or stress) and the two targets: `log_cases` for regression and `high_outbreak` for classification.
+
+```{r data-load}
+md_path <- file.path(root, "data", "final", "modeling_data.csv")
+md <- if (file.exists(md_path)) readr::read_csv(md_path, show_col_types = FALSE) else NULL
+if (!is.null(md)) {
+  cat("Rows:", nrow(md), "| Columns:", ncol(md), "\n")
+  if ("split" %in% names(md)) {
+    knitr::kable(count(md, split, high_outbreak) %>%
+      tidyr::pivot_wider(names_from = high_outbreak, values_from = n, values_fill = 0))
+  }
+}
+```
+
+```{r data-say, echo=FALSE, results='asis'}
+if (is.null(md)) {
+  say("*The modelling dataset has not been created yet. Run `06_feature_engineering.R`.*")
+} else {
+  say("**Key finding.**")
+  out <- sprintf("The modelling dataset has **%s** outbreak records and **%d** columns.",
+                 format(nrow(md), big.mark = ","), ncol(md))
+  if (all(c("split", "high_outbreak") %in% names(md))) {
+    sh <- md %>% group_by(split) %>%
+      summarise(n = n(), high = sum(high_outbreak == "High"), pct = 100 * mean(high_outbreak == "High"), .groups = "drop")
+    out <- c(out, sprintf("**%s:** %s records, of which %d (%.0f%%) are High outbreaks.", sh$split, format(sh$n, big.mark = ","), sh$high, sh$pct))
+    te <- sh$high[sh$split == "test"]
+    if (length(te) == 1 && te < 100)
+      out <- c(out, sprintf("**Caution:** the test set has only %d High outbreaks, so classification metrics are unstable and should be reported with that caveat.", te))
+  }
+  bullets(out)
+}
+```
+
+The split is by calendar year, not at random. Models learn from 2009 to 2017, are judged on 2018 to 2019, and are checked once more on the sparse, COVID-era years 2020 to 2022. This mirrors real use, where a model predicts the future from the past.
+
+# Exploratory data analysis outputs
+
+## Outcome distribution
+
+```{r fig-cases-log, fig.cap="Figure 2: Reported cases on the log scale"}
+show_fig("eda", "02_cases_log.png")
+```
+
+```{r eda-outcome-say, echo=FALSE, results='asis'}
+if (!is.null(md)) {
+  say("**Key finding.**")
+  med <- median(md$Cases); mn <- mean(md$Cases); mx <- max(md$Cases)
+  txt <- sprintf("Reported cases have a median of **%s** and a mean of **%s**; the largest record is **%s** cases.",
+                 format(round(med), big.mark = ","), format(round(mn), big.mark = ","), format(mx, big.mark = ","))
+  if (mn > 2 * med) txt <- paste(txt, "A mean more than twice the median is the signature of a strongly right-skewed outcome, so the log scale is justified.")
+  say(txt)
+  headline$eda <- sprintf("Outbreak sizes are heavily skewed (median %s, mean %s, maximum %s cases).",
+                          format(round(med), big.mark = ","), format(round(mn), big.mark = ","), format(mx, big.mark = ","))
+}
+```
+
+## Disease burden
+
+```{r tab-disease}
+show_tab("eda_disease_summary.csv", digits = 1)
+```
+
+  `records` counts outbreak reports, `total_cases` sums reported cases, and `median_cases` shows the typical outbreak size. A disease with many records but a small median produces frequent small outbreaks; one with few records and a large median produces rare large ones.
+
+```{r fig-disease-box, fig.cap="Figure 3: Log cases by disease"}
+show_fig("eda", "04_disease_boxplot.png")
+```
+
+```{r eda-disease-say, echo=FALSE, results='asis'}
+ds <- read_tab("eda_disease_summary.csv")
+if (!is.null(ds)) {
+  say("**Key finding.**")
+  top <- ds[which.max(ds$records), ]
+  big <- ds[which.max(ds$median_cases), ]
+  say(sprintf("**%s** accounts for %.0f%% of all records (%s). The disease with the largest typical outbreak is **%s** (median %.0f cases).",
+              top$Disease, 100 * top$records / sum(ds$records), format(top$records, big.mark = ","), big$Disease, big$median_cases))
+}
+```
+
+## Time and seasonality
+
+```{r fig-monthly, fig.cap="Figure 4: Outbreak reports per month, by disease"}
+show_fig("eda", "06_monthly_records.png")
+```
+
+```{r eda-time-say, echo=FALSE, results='asis'}
+if (!is.null(md)) {
+  say("**Key finding.**")
+  mc <- md %>% count(month) %>% arrange(desc(n))
+  say(sprintf("The busiest month for reports is **%s** (%.0f%% of records), followed by **%s** (%.0f%%).",
+              month.name[mc$month[1]], 100 * mc$n[1] / sum(mc$n), month.name[mc$month[2]], 100 * mc$n[2] / sum(mc$n)))
+  if ("season" %in% names(md)) {
+    ss <- md %>% group_by(season) %>% summarise(m = median(log_cases), .groups = "drop") %>% arrange(desc(m))
+    say(sprintf("Median log cases is highest in **%s** (%.2f) and lowest in **%s** (%.2f).", ss$season[1], ss$m[1], ss$season[nrow(ss)], ss$m[nrow(ss)]))
+  }
+}
+```
+
+## Geography
+
+```{r tab-zone}
+show_tab("eda_zone_summary.csv", digits = 2)
+```
+
+```{r fig-map, fig.cap="Figure 6: Spatial distribution of outbreak reports, coloured by log cases"}
+show_fig("eda", "10_spatial_scatter.png")
+```
+
+```{r eda-geo-say, echo=FALSE, results='asis'}
+zs <- read_tab("eda_zone_summary.csv")
+if (!is.null(zs)) {
+  say("**Key finding.**")
+  say(sprintf("Reports are most numerous in the **%s** zone (%s records). Mean log cases is highest in **%s** (%.2f) and lowest in **%s** (%.2f).",
+              zs$zone[which.max(zs$records)], format(max(zs$records), big.mark = ","),
+              zs$zone[which.max(zs$mean_log_cases)], max(zs$mean_log_cases),
+              zs$zone[which.min(zs$mean_log_cases)], min(zs$mean_log_cases)))
+}
+```
+
+## Climate relationships
+
+```{r fig-corr, fig.cap="Figure 8: Correlation matrix"}
+show_fig("eda", "13_correlation_heatmap.png")
+```
+
+```{r eda-clim-say, echo=FALSE, results='asis'}
+cm <- read_tab("eda_correlation_matrix.csv")
+if (!is.null(cm) && "log_cases" %in% cm$variable) {
+  say("**Key finding.**")
+  row <- cm[cm$variable == "log_cases", ]
+  cols <- intersect(c("Temp_C", "preci_log", "LAI"), names(row))
+  if (length(cols) > 0) {
+    vals <- unlist(row[1, cols])
+    bullets(sprintf("**%s**: correlation with log cases = %.3f (%s)", cols, vals, sapply(vals, strength_r)))
+    if (all(abs(vals) < 0.1))
+      say("All climate correlations are negligible. This is a legitimate finding: climate alone does not linearly track outbreak size here.")
+  }
+}
+```
+
+## Missing data
+
+```{r eda-miss-say, echo=FALSE, results='asis'}
+ms <- read_tab("eda_missingness.csv")
+if (!is.null(ms) && nrow(ms) > 0) {
+  say("**Key finding.**")
+  bullets(sprintf("**%s**: %.1f%% missing", ms$variable[seq_len(min(4, nrow(ms)))], ms$pct_missing[seq_len(min(4, nrow(ms)))]))
+  say("Climate gaps are flagged and filled later using training-set medians only. Deaths is never filled and is never used as a predictor.")
+}
+```
+
+# Statistical analysis outputs
+
+These tables test whether the patterns seen in the figures are larger than chance. Records from the same district are not independent, so treat p-values as indicative and give more weight to effect sizes.
+
+## Group differences (Kruskal-Wallis)
+
+```{r tab-kw}
+show_tab("stats_kruskal.csv", digits = 4)
+```
+
+  `H` and `p_value` test whether log cases differ between groups. `epsilon_sq` is the effect size: roughly below 0.01 negligible, around 0.06 moderate, above 0.14 large. A tiny p-value with a tiny effect size means a real but practically unimportant difference.
+
+```{r stats-kw-say, echo=FALSE, results='asis'}
+kw <- read_tab("stats_kruskal.csv")
+if (!is.null(kw)) {
+  say("**Key finding.**")
+  bullets(sprintf("**%s**: H = %.1f, %s, effect size %.3f (%s)", kw$variable, kw$H, sapply(kw$p_value, p_txt), kw$epsilon_sq, sapply(kw$epsilon_sq, effect_eps)))
+}
+```
+
+## Correlation with outbreak size (Spearman)
+
+```{r tab-sp}
+show_tab("stats_spearman.csv", digits = 4)
+```
+
+  `rho` ranges from -1 to +1 and measures how consistently two variables rise or fall together without assuming a straight line. `p_holm` is the p-value adjusted for testing many variables at once.
+
+```{r stats-sp-say, echo=FALSE, results='asis'}
+sp <- read_tab("stats_spearman.csv")
+if (!is.null(sp)) {
+  say("**Key finding.**")
+  top <- head(sp[order(-abs(sp$rho)), ], 4)
+  bullets(sprintf("**%s**: rho = %.2f (%s), n = %s, adjusted %s", top$variable, top$rho, sapply(top$rho, strength_r), format(top$n, big.mark = ","), sapply(top$p_holm, p_txt)))
+}
+```
+
+## Association with outbreak class and climate differences
+
+```{r tab-chi}
+show_tab("stats_chisq.csv", digits = 4)
+```
+
+```{r tab-clim}
+show_tab("stats_climate_by_outbreak.csv", digits = 3)
+```
+
+  The chi-square table asks whether the share of High outbreaks differs between seasons or zones; `cramers_v` is the effect size. The climate table compares the median of each climate variable in Low and High outbreaks. Disease is excluded from the chi-square test because the High label is defined within each disease, which balances it by design.
+
+```{r stats-chi-say, echo=FALSE, results='asis'}
+chi <- read_tab("stats_chisq.csv"); cl <- read_tab("stats_climate_by_outbreak.csv")
+out <- character()
+if (!is.null(chi)) out <- c(out, sprintf("**%s vs High outbreak**: %s, Cramer's V = %.3f (%s effect)", chi$variable, sapply(chi$p_value, p_txt), chi$cramers_v, sapply(chi$cramers_v, effect_v)))
+if (!is.null(cl)) out <- c(out, sprintf("**%s**: median %.2f in Low vs %.2f in High outbreaks (%s)", cl$variable, cl$median_low, cl$median_high, sapply(cl$p_value, p_txt)))
+if (length(out) > 0) { say("**Key finding.**"); bullets(out) }
+```
+
+## Multicollinearity (VIF)
+
+```{r tab-vif}
+show_tab("stats_vif.csv", digits = 2)
+```
+
+  A variance inflation factor above 5 to 10 means a predictor is largely explained by the others, which makes linear-model coefficients unstable. Interaction terms usually score high against their own components.
+
+```{r stats-vif-say, echo=FALSE, results='asis'}
+vf <- read_tab("stats_vif.csv")
+if (!is.null(vf)) {
+  say("**Key finding.**")
+  hi <- vf[vf$vif > 5, ]
+  if (nrow(hi) > 0) say(sprintf("Variables with VIF above 5: %s. Interpret their linear-regression coefficients with caution.", paste0(hi$variable, " (", round(hi$vif, 1), ")", collapse = ", ")))
+  else say("No variable has a VIF above 5, so multicollinearity is not a concern for the linear models.")
+}
+```
+
+# Regression outputs: predicting outbreak size
+
+The regression models predict `log_cases`. They are always compared with a **baseline** that predicts each disease's typical (median) size. A model is only useful if it clearly beats that baseline.
+
+```{r tab-reg-metrics}
+show_tab("regression_metrics.csv", digits = 3)
+```
+
+  Each row is a model on one evaluation set. Compare each model's RMSE and R-squared with the `Baseline` row for the same set. `MAE_cases` converts the error back to real cases but is dominated by a few huge outbreaks, so rely on the log-scale columns.
+
+```{r reg-say, echo=FALSE, results='asis'}
+rm_ <- read_tab("regression_metrics.csv")
+if (!is.null(rm_)) {
+  say("**Key finding.**")
+  out <- character()
+  for (s in c("test", "stress")) {
+    d <- rm_[rm_$set == s, ]
+    cand <- d[d$model != "Baseline", ]
+    base <- d[d$model == "Baseline", ]
+    if (nrow(cand) == 0 || nrow(base) == 0) next
+    best <- cand[which.min(cand$RMSE), ]
+    pct <- 100 * (base$RMSE - best$RMSE) / base$RMSE
+    out <- c(out, sprintf("**%s:** the best model is **%s** with RMSE %.2f against %.2f for the baseline, which is %s (%.1f%% change in error). R-squared is %.2f, which is %s.",
+                          set_label(s), best$model, best$RMSE, base$RMSE, improve_words(pct), pct, best$R2, r2_words(best$R2)))
+    if (s == "test") headline$reg <- sprintf("On test years the best regression model (%s) shows %s (RMSE %.2f vs %.2f, R-squared %.2f).",
+                                              best$model, improve_words(pct), best$RMSE, base$RMSE, best$R2)
+  }
+  bullets(out)
+}
+```
+
+## Performance by outbreak history
+
+```{r tab-reg-hist}
+show_tab("regression_metrics_by_history.csv", digits = 3)
+```
+
+  `has_history = 1` rows belong to a district and disease with an earlier report, so history features carry real information. `has_history = 0` rows only receive a disease-median stand-in, so models should perform much like the baseline there.
+
+```{r reg-hist-say, echo=FALSE, results='asis'}
+rh <- read_tab("regression_metrics_by_history.csv")
+if (!is.null(rh)) {
+  d <- rh[rh$set == "test" & rh$model != "Baseline", ]
+  if (nrow(d) > 0) {
+    say("**Key finding.**")
+    bullets(sprintf("**%s**, %s: RMSE %.2f, R-squared %.2f (n = %s)", d$model,
+                    ifelse(d$has_history == 1, "with an earlier report", "no earlier report"), d$RMSE, d$R2, format(d$n, big.mark = ",")))
+  }
+}
+```
+
+## Figures
+
+```{r fig-reg-pred, fig.cap="Figure 10: Predicted against actual log cases, test years"}
+show_fig("regression", "01_pred_vs_actual_test.png")
+```
+
+  Each dot is one outbreak. Dots hugging the red diagonal are well predicted. A flat horizontal band of dots means the model predicts nearly the same value for everything and has little skill. Dots far above the line are outbreaks the model underestimated.
+
+```{r fig-reg-imp, fig.cap="Figure 12: Random forest permutation importance (regression)"}
+show_fig("regression", "03_rf_importance.png")
+```
+
+  Figure 12 shows how much prediction error increases when a variable is scrambled: longer bars mean the model relies on that variable more. Figure 13 compares error distributions: lower boxes mean smaller errors, and the baseline box shows what a trivial rule achieves.
+
+## Coefficients and importance
+
+```{r tab-reg-coef}
+show_tab("regression_lm_coefficients.csv", digits = 3)
+```
+
+```{r reg-coef-say, echo=FALSE, results='asis'}
+lc <- read_tab("regression_lm_coefficients.csv"); ri <- read_tab("regression_rf_importance.csv")
+if (!is.null(lc)) {
+  say("**Key finding.**")
+  pcol <- grep("^Pr", names(lc), value = TRUE)[1]
+  tcol <- grep("^t value", names(lc), value = TRUE)[1]
+  sig <- lc[lc$term != "(Intercept)" & !is.na(lc[[pcol]]) & lc[[pcol]] < 0.05, ]
+  say(sprintf("In the linear model, **%d** terms are statistically significant at the 5%% level (indicative only, because records are not independent).", nrow(sig)))
+  if (nrow(sig) > 0) {
+    sig <- sig[order(-abs(sig[[tcol]])), ]
+    top <- head(sig, 5)
+    bullets(sprintf("**%s**: coefficient %.3f (%s)", top$term, top$Estimate, sapply(top[[pcol]], p_txt)))
+  }
+}
+if (!is.null(ri)) say(sprintf("The random forest relies most on: **%s**.", paste(head(ri$variable, 5), collapse = ", ")))
+```
+
+  In a linear model on log cases, a coefficient of 0.1 on a variable means one extra unit of it goes with roughly a 10% change in cases, holding the others fixed. Category coefficients are relative to the first (reference) category alphabetically.
+
+# Classification outputs: predicting surges
+
+A report is a **High outbreak** when its cases exceed the 75th percentile of its own disease, calculated on training years.
+
+```{r tab-thr}
+show_tab("outbreak_thresholds.csv", digits = 1)
+```
+
+  `outbreak_threshold` is the case count above which a report is High for that disease. Small `n_train` values mean the threshold rests on few records and is less reliable.
+
+```{r tab-clf-metrics}
+show_tab("classification_metrics.csv", digits = 3)
+```
+
+  Compare each model with two baselines. *Always Low* shows how misleading accuracy is. *Previous report rule* predicts High if the last report in that district and disease was above the threshold; a useful model has to beat it. Compare PR-AUC with `prevalence`, the no-skill level.
+
+```{r clf-say, echo=FALSE, results='asis'}
+cmet <- read_tab("classification_metrics.csv")
+if (!is.null(cmet)) {
+  say("**Key finding.**")
+  d <- cmet[cmet$set == "test", ]
+  cand <- d[d$model %in% c("Logistic Regression", "Random Forest"), ]
+  rule <- d[d$model == "Previous report rule", ]
+  alw <- d[d$model == "Always Low", ]
+  if (nrow(cand) > 0) {
+    best <- cand[which.max(cand$PR_AUC), ]
+    out <- c(sprintf("On the test years, **%.0f%%** of outbreaks are High (the no-skill PR-AUC level).", 100 * best$prevalence),
+             sprintf("The best model is **%s**: PR-AUC %.2f (%.1f times the no-skill level), ROC-AUC %.2f.", best$model, best$PR_AUC, best$PR_AUC / best$prevalence, best$ROC_AUC),
+             sprintf("At its chosen threshold of %.2f it reaches precision %.2f, recall %.2f and F1 %.2f.", best$threshold, best$precision, best$recall, best$F1))
+    cmp <- "No previous-report baseline is available for comparison."
+    if (nrow(rule) == 1) {
+      gap <- best$PR_AUC - rule$PR_AUC
+      cmp <- if (gap < 0.02) sprintf("It does **not meaningfully beat** the simple previous-report rule (PR-AUC %.2f vs %.2f), so the extra modelling adds little.", best$PR_AUC, rule$PR_AUC)
+             else sprintf("It beats the simple previous-report rule (PR-AUC %.2f vs %.2f) by %.2f.", best$PR_AUC, rule$PR_AUC, gap)
+    }
+    out <- c(out, cmp)
+    if (nrow(alw) == 1) out <- c(out, sprintf("A model that always predicts Low is right %.0f%% of the time yet catches no High outbreaks, which is why accuracy alone is misleading.", 100 * alw$accuracy))
+    bullets(out)
+    headline$clf <- sprintf("On test years the best classifier (%s) reaches PR-AUC %.2f against %.2f prevalence; %s", best$model, best$PR_AUC, best$prevalence,
+                            if (nrow(rule) == 1 && best$PR_AUC - rule$PR_AUC < 0.02) "it does not meaningfully beat the previous-report rule." else "it improves on the previous-report rule.")
+  }
+}
+```
+
+## Confusion matrix
+
+```{r confusion}
+preds <- read_tab("classification_predictions.csv")
+d <- if (!is.null(cmet)) cmet[cmet$set == "test" & cmet$model %in% c("Logistic Regression", "Random Forest"), ] else NULL
+if (!is.null(d) && nrow(d) > 0 && !is.null(preds)) {
+  best_model <- d$model[which.max(d$PR_AUC)]
+  thr <- d$threshold[d$model == best_model]
+  tp <- preds[preds$set == "test", ]
+  cm_tab <- table(Actual = factor(tp$actual, levels = c(0, 1), labels = c("Low", "High")),
+                  Predicted = factor(as.integer(tp[[best_model]] >= thr), levels = c(0, 1), labels = c("Low", "High")))
+  cat("Best model:", best_model, "| threshold:", thr, "\n")
+  knitr::kable(as.data.frame.matrix(cm_tab))
+}
+```
+
+  Rows are the truth and columns are the prediction. The bottom-right cell holds correct High predictions, the top-right holds false alarms, and the bottom-left holds High outbreaks the model missed. Precision is the bottom-right cell divided by the right column; recall is the bottom-right cell divided by the bottom row.
+
+## Figures
+
+```{r fig-roc, fig.cap="Figure 14: ROC curves, test years"}
+show_fig("classification", "01_roc_test.png")
+```
+
+```{r fig-pr, fig.cap="Figure 15: Precision-recall curves, test years"}
+show_fig("classification", "02_pr_test.png")
+```
+
+  In the ROC curve, a line bowing toward the top-left is better, and the dashed diagonal is guessing. In the precision-recall curve, a line well above the dashed horizontal prevalence line shows real skill. When High outbreaks are a minority, the precision-recall curve is the more honest view.
+
+  Figure 16 ranks variables by how much accuracy drops when they are scrambled. In Figure 17, an odds ratio above 1 raises the odds of a High outbreak and below 1 lowers them. An interval that crosses the dashed line at 1 means the effect is not clearly different from none.
+
+```{r or-say, echo=FALSE, results='asis'}
+orr <- read_tab("classification_lr_odds_ratios.csv")
+if (!is.null(orr)) {
+  say("**Key finding.**")
+  sg <- orr[orr$term != "(Intercept)" & !is.na(orr$p_value) & orr$p_value < 0.05 & is.finite(orr$upper), ]
+  if (nrow(sg) == 0) say("No odds ratio is statistically significant at the 5% level.")
+  else {
+    top <- head(sg[order(-abs(log(sg$odds_ratio))), ], 5)
+    effect <- ifelse(top$odds_ratio > 1, sprintf("%.0f%% higher odds of a High outbreak", 100 * (top$odds_ratio - 1)), sprintf("%.0f%% lower odds of a High outbreak", 100 * (1 - top$odds_ratio)))
+    bullets(sprintf("**%s**: odds ratio %.2f (95%% interval %.2f to %.2f), meaning %s", top$term, top$odds_ratio, top$lower, top$upper, effect))
+    say("Each effect holds the other variables fixed. Category effects are relative to the first (reference) category alphabetically.")
+  }
+}
+```
+
+# Which factors matter most?
+
+Individual variable importances can be hard to compare, so the table below adds them up by **factor group** and normalises each forest to 100%. Permutation importance spreads credit between correlated variables, and grouping reduces that distortion.
+
+```{r factor-groups}
+grp <- c(Disease = "Disease type",
+         season = "Season and month", month_sin = "Season and month", month_cos = "Season and month",
+         zone = "Location", Latitude = "Location", Longitude = "Location",
+         Temp_C = "Climate", preci_log = "Climate", LAI = "Climate",
+         preci_missing = "Climate", lai_missing = "Climate", temp_missing = "Climate",
+         prev_log_cases = "Outbreak history", roll3_log_cases = "Outbreak history",
+         log_days_since_prev = "Outbreak history", log_n_prior = "Outbreak history",
+         has_history = "Outbreak history")
+
+group_share <- function(imp, col) {
+  x <- pmax(imp[[col]], 0)
+  data.frame(group = unname(grp[imp$variable]), share = 100 * x / sum(x)) %>%
+    group_by(group) %>% summarise(share = sum(share), .groups = "drop")
+}
+
+ri <- read_tab("regression_rf_importance.csv")
+ci <- read_tab("classification_rf_importance.csv")
+if (!is.null(ri) && !is.null(ci)) {
+  fg <- full_join(group_share(ri, "pct_inc_mse") %>% rename(reg_share = share),
+                  group_share(ci, "mean_decrease_accuracy") %>% rename(clf_share = share), by = "group") %>%
+    arrange(desc(reg_share))
+  knitr::kable(fg, digits = 1, col.names = c("Factor group", "Regression importance (%)", "Classification importance (%)"))
+}
+```
+
+```{r fig-groups, fig.cap="Figure 18: Share of random forest importance by factor group", fig.height=4}
+if (exists("fg")) {
+  fg %>% pivot_longer(c(reg_share, clf_share), names_to = "task", values_to = "share") %>%
+    mutate(task = ifelse(task == "reg_share", "Regression", "Classification")) %>%
+    ggplot(aes(reorder(group, share), share, fill = task)) +
+    geom_col(position = "dodge") + coord_flip() +
+    labs(x = NULL, y = "Share of importance (%)", fill = NULL) + theme_minimal(base_size = 12)
+}
+```
+
+```{r factors-say, echo=FALSE, results='asis'}
+if (exists("fg")) {
+  say("**Key finding.**")
+  tr <- fg$group[which.max(fg$reg_share)]; tc <- fg$group[which.max(fg$clf_share)]
+  say(sprintf("In the regression forest, **%s** carries %.0f%% of total importance; in the classification forest, **%s** carries %.0f%%.",
+              tr, max(fg$reg_share, na.rm = TRUE), tc, max(fg$clf_share, na.rm = TRUE)))
+  cl <- fg[fg$group == "Climate", ]
+  if (nrow(cl) == 1) say(sprintf("Climate variables together account for **%.0f%%** of regression importance and **%.0f%%** of classification importance.", cl$reg_share, cl$clf_share))
+  headline$factors <- sprintf("Most important factor group: %s (regression) and %s (classification); climate contributes %.0f%% and %.0f%%.",
+                              tr, tc, if (nrow(cl) == 1) cl$reg_share else NA, if (nrow(cl) == 1) cl$clf_share else NA)
+}
+```
+
+**Important caution.** These scores describe association, not cause. A variable that ranks high helps the model predict outbreak size; it does not prove that changing that variable would change outbreaks.
+
+# Clustering outputs
+
+K-Means grouped districts by their outbreak profile (reporting frequency, typical size, share of High outbreaks, disease mix, seasonality and climate). Only districts with at least five reports are profiled.
+
+```{r tab-k}
+show_tab("clustering_k_selection.csv", digits = 3)
+```
+
+  In the elbow plot, look for the point where adding clusters stops reducing the within-cluster spread much. The silhouette measures how well each district fits its own cluster compared with the next closest: above 0.5 is strong structure, 0.25 to 0.5 weak, and below 0.25 essentially none.
+
+```{r clu-say, echo=FALSE, results='asis'}
+cp <- read_tab("clustering_profiles.csv"); ks <- read_tab("clustering_k_selection.csv")
+if (!is.null(cp) && !is.null(ks)) {
+  say("**Key finding.**")
+  k <- nrow(cp); sil <- ks$avg_silhouette[ks$k == k]
+  if (length(sil) == 1) {
+    say(sprintf("The analysis uses **%d clusters** with an average silhouette of **%.2f**, which indicates **%s**.", k, sil, sil_words(sil)))
+    headline$clu <- sprintf("Districts form %d clusters with an average silhouette of %.2f (%s).", k, sil, sil_words(sil))
+  }
+}
+```
+
+## What distinguishes each cluster
+
+```{r tab-clu-prof}
+show_tab("clustering_profiles.csv", digits = 2)
+```
+
+```{r clu-desc, echo=FALSE, results='asis'}
+asg <- read_tab("clustering_district_assignments.csv")
+if (!is.null(asg)) {
+  feat <- intersect(c("log_n_reports", "median_log_cases", "pct_high", "share_monsoon", "share_diarrhoeal", "share_dengue",
+                      "share_chik", "share_cholera", "share_malaria", "mean_temp", "mean_preci", "mean_lai"), names(asg))
+  zs <- asg %>% mutate(across(all_of(feat), ~ as.numeric(scale(.x)))) %>%
+    group_by(cluster) %>% summarise(across(all_of(feat), mean), n = n(), .groups = "drop")
+  lines <- character()
+  for (i in seq_len(nrow(zs))) {
+    v <- unlist(zs[i, feat])
+    top <- head(names(sort(abs(v), decreasing = TRUE)), 3)
+    parts <- sprintf("%s (%+.1f SD)", top, v[top])
+    lines <- c(lines, sprintf("**Cluster %s** (%d districts) stands out for: %s.", zs$cluster[i], zs$n[i], paste(parts, collapse = ", ")))
+  }
+  say("**Cluster profiles.** SD means standard deviations above (+) or below (-) the average district.")
+  bullets(lines)
+}
+```
+
+```{r fig-pca, fig.cap="Figure 21: Clusters in principal-component space"}
+show_fig("clustering", "03_pca_clusters.png")
+```
+
+```{r fig-prof, fig.cap="Figure 22: Standardised cluster profiles"}
+show_fig("clustering", "04_cluster_profiles.png")
+```
+
+  Figure 21 flattens the profiles into two dimensions: clusters that overlap heavily are not clearly separated. Figure 22 is a heat map where red or blue cells show which features define each cluster. Figures 23 and 24 show whether clusters are geographic or cut across regions.
+
+# Summary of findings by objective
+
+```{r scorecard, echo=FALSE, results='asis'}
+get_h <- function(x) if (is.null(x)) "Not available yet: run the relevant script." else x
+sc <- data.frame(
+  Objective = c("1. Disease patterns (time, place, seasonality)", "2. Predict outbreak size (regression)",
+                "3. Predict surges (classification)", "4. Important factors", "5. District clusters and rules"),
+  Headline = c(get_h(headline$eda), get_h(headline$reg), get_h(headline$clf), get_h(headline$factors), get_h(headline$clu)))
+print(knitr::kable(sc))
+```
+
+# Conclusion
+
+The project describes outbreak patterns by disease, time and location, tests relationships between recorded factors and case counts, and evaluates models for outbreak-size prediction and surge classification. Clustering and association rules add summaries of district and outbreak patterns.
+
+Model usefulness should be judged against the relevant baseline on held-out test years. Results represent associations in the available records, not causal explanations.
+
+## Limitations
+
+This dataset contains reported outbreak events. The analysis therefore focuses on the size and characteristics of recorded outbreaks; it does not directly predict whether a new outbreak will begin. Multiple records can come from the same district, so the usual independence assumptions behind p-values and confidence intervals may not hold fully. Differences in district naming can also split what should be one location into several groups.
+
+Reporting practices may vary across places and years. The 2020–2022 period is especially sparse and unusual, so stress-period results should be treated cautiously. Finally, the patterns identified here are associations. They do not establish that a particular factor causes an outbreak.
+
+## Future work
+
+Future improvements could use regular weekly surveillance data, standardise district names, and test spatial or hierarchical models that account for repeated records from the same districts.
+
+# References
+
+1. Breiman, L., "Random Forests", *Machine Learning*, 45(1), pp. 5-32, 2001.
+2. Rousseeuw, P. J., "Silhouettes: a graphical aid to the interpretation and validation of cluster analysis", *Journal of Computational and Applied Mathematics*, 20, pp. 53-65, 1987.
+3. Agrawal, R. and Srikant, R., "Fast algorithms for mining association rules", *Proc. 20th VLDB Conference*, 1994.
+4. James, G., Witten, D., Hastie, T. and Tibshirani, R., *An Introduction to Statistical Learning with Applications in R*, 2nd ed., Springer, 2021.
