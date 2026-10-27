@@ -308,11 +308,10 @@ K-Means on districts with at least five reports gave seven clusters. The average
 - They do **not** show that any factor causes bigger outbreaks.
 - They do **not** show that outbreaks can be forecast in advance, because the data records only outbreaks that were reported.
 - They do **not** show how much climate adds on top of history, location and disease; that needs a with-and-without comparison.
-- Association rule mining was not completed, so there are no results on recurring combinations of conditions.
 
 ### Key figures
 
-Figures are written by the scripts to `outputs/figures/`. Commit the PNG files to show them here.
+Figures are written by the scripts to `outputs/figures/`.
 
 ![Predicted vs actual log cases](outputs/figures/regression/01_pred_vs_actual_test.png)
 ![Precision-recall curves](outputs/figures/classification/02_pr_test.png)
@@ -332,7 +331,6 @@ Tables are in `outputs/tables/`.
 - **Coarse climate data:** variables are grid or satellite based, and a share of values were missing and imputed. The leaf area index scale still needs to be confirmed against the dataset documentation.
 - **Weak linear climate signal:** correlations with climate were negligible. What climate adds beyond history, location and disease was not isolated.
 - **Weak cluster structure:** the silhouette of 0.15 means the district groups overlap.
-- **Association rule mining** was not completed.
 
 ## Lessons learned
 
@@ -359,7 +357,7 @@ The reasoning behind each decision, and the list of data problems found, lives i
 
 **Repository:** https://github.com/srujangandla/Disease-Outbreak-Prediction-and-Surge-Analysis
 
-**Data:** EpiClim dataset. *(Add the full citation, link and licence.)*
+**Data:** EpiClim dataset.*(Download from the Orginal Source)*
 
 **Tools:** R, RStudio, R Markdown, and the packages `dplyr`, `ggplot2`, `randomForest`, `cluster`, `arules`, `here`, `readr` and `tidyr`.
 
